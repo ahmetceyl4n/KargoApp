@@ -1,0 +1,43 @@
+# Yerel geliştirme altyapısı: PostgreSQL + RabbitMQ + Redis
+# Başlat: docker compose up -d   |   Durdur: docker compose down   |   Verileri de sil: docker compose down -v
+# Şifreler aynı klasördeki .env dosyasından okunur (bkz. .env.example).
+name: kargoapp
+
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-kargo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?.env dosyasinda POSTGRES_PASSWORD tanimli degil}
+      POSTGRES_DB: KargoApp
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kargo -d KargoApp"]
+      interval: 5s
+      retries: 10
+
+  rabbitmq:
+    image: rabbitmq:4-management
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-kargo}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?.env dosyasinda RABBITMQ_PASSWORD tanimli degil}
+    ports:
+      - "5672:5672"     # AMQP (uygulamalar buraya bağlanır)
+      - "15672:15672"   # Yönetim arayüzü: http://localhost:15672
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+
+volumes:
+  postgres-data:
+  rabbitmq-data:
+  redis-data:

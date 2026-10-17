@@ -1,0 +1,23 @@
+<Solution>
+    <Configurations>
+        <Platform Name="Any CPU" />
+    </Configurations>
+    <Folder Name="/src/">
+        <Project Path="src/KargoApp.Domain/KargoApp.Domain.csproj" />
+        <Project Path="src/KargoApp.Application/KargoApp.Application.csproj" />
+        <Project Path="src/KargoApp.EntityFrameworkCore/KargoApp.EntityFrameworkCore.csproj" />
+        <Project Path="src/KargoApp.Domain.Shared/KargoApp.Domain.Shared.csproj" />
+        <Project Path="src/KargoApp.Application.Contracts/KargoApp.Application.Contracts.csproj" />
+        <Project Path="src/KargoApp.HttpApi/KargoApp.HttpApi.csproj" />
+        <Project Path="src/KargoApp.HttpApi.Client/KargoApp.HttpApi.Client.csproj" />
+        <Project Path="src/KargoApp.HttpApi.Host/KargoApp.HttpApi.Host.csproj" />
+        <Project Path="src/KargoApp.DbMigrator/KargoApp.DbMigrator.csproj" />
+    </Folder>
+    <Folder Name="/test/">
+        <Project Path="test/KargoApp.Application.Tests/KargoApp.Application.Tests.csproj" />
+        <Project Path="test/KargoApp.EntityFrameworkCore.Tests/KargoApp.EntityFrameworkCore.Tests.csproj" />
+        <Project Path="test/KargoApp.TestBase/KargoApp.TestBase.csproj" />
+        <Project Path="test/KargoApp.Domain.Tests/KargoApp.Domain.Tests.csproj" />
+        <Project Path="test/KargoApp.HttpApi.Client.ConsoleTestApp/KargoApp.HttpApi.Client.ConsoleTestApp.csproj" />
+    </Folder>
+</Solution>

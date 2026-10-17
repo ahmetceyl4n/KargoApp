@@ -1,0 +1,109 @@
+{
+  "template": "app",
+  "imports": {
+    "Volo.Abp.LeptonXLiteTheme": {
+      "version": "5.7.0",
+      "isInstalled": true,
+      "creationTime": "10/15/2026 14:18:45 +00:00"
+    },
+    "Volo.Abp.Account": {
+      "version": "10.7.0",
+      "isInstalled": true,
+      "creationTime": "10/15/2026 14:18:45 +00:00"
+    },
+    "Volo.Abp.OpenIddict": {
+      "version": "10.7.0",
+      "isInstalled": true,
+      "creationTime": "10/15/2026 14:18:45 +00:00"
+    },
+    "Volo.Abp.Identity": {
+      "version": "10.7.0",
+      "isInstalled": true,
+      "creationTime": "10/15/2026 14:18:45 +00:00"
+    },
+    "Volo.Abp.SettingManagement": {
+      "version": "10.7.0",
+      "isInstalled": true,
+      "creationTime": "10/15/2026 14:18:45 +00:00"
+    },
+    "Volo.Abp.PermissionManagement": {
+      "version": "10.7.0",
+      "isInstalled": true,
+      "creationTime": "10/15/2026 14:18:45 +00:00"
+    },
+    "Volo.Abp.FeatureManagement": {
+      "version": "10.7.0",
+      "isInstalled": true,
+      "creationTime": "10/15/2026 14:18:45 +00:00"
+    },
+    "Volo.Abp.BlobStoring.Database": {
+      "version": "10.7.0",
+      "isInstalled": true,
+      "creationTime": "10/15/2026 14:18:45 +00:00"
+    }
+  },
+  "folders": {
+    "items": {
+      "src": {},
+      "test": {}
+    }
+  },
+  "packages": {
+    "KargoApp.Application": {
+      "path": "src/KargoApp.Application/KargoApp.Application.abppkg",
+      "folder": "src"
+    },
+    "KargoApp.Application.Tests": {
+      "path": "test/KargoApp.Application.Tests/KargoApp.Application.Tests.abppkg",
+      "folder": "test"
+    },
+    "KargoApp.Domain.Shared": {
+      "path": "src/KargoApp.Domain.Shared/KargoApp.Domain.Shared.abppkg",
+      "folder": "src"
+    },
+    "KargoApp.Application.Contracts": {
+      "path": "src/KargoApp.Application.Contracts/KargoApp.Application.Contracts.abppkg",
+      "folder": "src"
+    },
+    "KargoApp.HttpApi": {
+      "path": "src/KargoApp.HttpApi/KargoApp.HttpApi.abppkg",
+      "folder": "src"
+    },
+    "KargoApp.HttpApi.Client": {
+      "path": "src/KargoApp.HttpApi.Client/KargoApp.HttpApi.Client.abppkg",
+      "folder": "src"
+    },
+    "KargoApp.EntityFrameworkCore.Tests": {
+      "path": "test/KargoApp.EntityFrameworkCore.Tests/KargoApp.EntityFrameworkCore.Tests.abppkg",
+      "folder": "test"
+    },
+    "KargoApp.EntityFrameworkCore": {
+      "path": "src/KargoApp.EntityFrameworkCore/KargoApp.EntityFrameworkCore.abppkg",
+      "folder": "src"
+    },
+    "KargoApp.TestBase": {
+      "path": "test/KargoApp.TestBase/KargoApp.TestBase.abppkg",
+      "folder": "test"
+    },
+    "KargoApp.Domain.Tests": {
+      "path": "test/KargoApp.Domain.Tests/KargoApp.Domain.Tests.abppkg",
+      "folder": "test"
+    },
+    "KargoApp.HttpApi.Client.ConsoleTestApp": {
+      "path": "test/KargoApp.HttpApi.Client.ConsoleTestApp/KargoApp.HttpApi.Client.ConsoleTestApp.abppkg",
+      "folder": "test"
+    },
+    "KargoApp.DbMigrator": {
+      "path": "src/KargoApp.DbMigrator/KargoApp.DbMigrator.abppkg",
+      "folder": "src"
+    },
+    "KargoApp.HttpApi.Host": {
+      "path": "src/KargoApp.HttpApi.Host/KargoApp.HttpApi.Host.abppkg",
+      "folder": "src"
+    },
+    "KargoApp.Domain": {
+      "path": "src/KargoApp.Domain/KargoApp.Domain.abppkg",
+      "folder": "src"
+    }
+  }
+}
