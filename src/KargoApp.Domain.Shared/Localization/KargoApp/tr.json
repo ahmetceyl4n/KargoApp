@@ -2,6 +2,7 @@
   "culture": "tr",
   "texts": {
     "AppName": "KargoApp",
+    "KargoApp:ShipmentCannotBeCancelled": "Kargo {CurrentStatus} durumunda olduğu için iptal edilemez.",
     "Menu:Home": "Ana sayfa",
     "Menu:ContactUs": "Bize Ulaşın",
     "Menu:ArticleSample": "Yazı Örneği",
