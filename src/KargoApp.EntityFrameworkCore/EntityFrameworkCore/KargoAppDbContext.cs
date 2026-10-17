@@ -1,3 +1,5 @@
+using KargoApp.Branches;
+using KargoApp.Shipments;
 using Microsoft.EntityFrameworkCore;
 using Volo.Abp.AuditLogging.EntityFrameworkCore;
 using Volo.Abp.BackgroundJobs.EntityFrameworkCore;
@@ -22,7 +24,8 @@ public class KargoAppDbContext :
     IIdentityDbContext
 {
     /* Add DbSet properties for your Aggregate Roots / Entities here. */
-
+    public DbSet<Shipment> Shipments { get; set; }
+    public DbSet<Branch> Branches { get; set; }
 
     #region Entities from the modules
 
@@ -72,11 +75,29 @@ public class KargoAppDbContext :
 
         /* Configure your own tables/entities inside here */
 
-        //builder.Entity<YourEntity>(b =>
-        //{
-        //    b.ToTable(KargoAppConsts.DbTablePrefix + "YourEntities", KargoAppConsts.DbSchema);
-        //    b.ConfigureByConvention(); //auto configure for the base class props
-        //    //...
-        //});
+        builder.Entity<Shipment>(b =>
+        {
+            b.ToTable(KargoAppConsts.DbTablePrefix + "Shipments", KargoAppConsts.DbSchema);
+            b.ConfigureByConvention(); //auto configure for the base class props
+
+            b.Property(x => x.TrackingNumber).IsRequired().HasMaxLength(ShipmentConsts.TrackingNumberLength);
+            b.Property(x => x.SenderName).IsRequired().HasMaxLength(ShipmentConsts.MaxNameLength);
+            b.Property(x => x.ReceiverName).IsRequired().HasMaxLength(ShipmentConsts.MaxNameLength);
+            b.Property(x => x.ReceiverCity).IsRequired().HasMaxLength(ShipmentConsts.MaxCityLength);
+            b.Property(x => x.WeightKg).HasPrecision(6, 2);
+            b.Property(x => x.LastBranchCode).HasMaxLength(BranchConsts.MaxCodeLength);
+
+            b.HasIndex(x => x.TrackingNumber).IsUnique();
+        });
+
+        builder.Entity<Branch>(b =>
+        {
+            b.ToTable(KargoAppConsts.DbTablePrefix + "Branches", KargoAppConsts.DbSchema);
+            b.ConfigureByConvention();
+
+            b.Property(x => x.Id).HasColumnName("Code").HasMaxLength(BranchConsts.MaxCodeLength);
+            b.Property(x => x.Name).IsRequired().HasMaxLength(BranchConsts.MaxNameLength);
+            b.Property(x => x.City).IsRequired().HasMaxLength(BranchConsts.MaxCityLength);
+        });
     }
 }
