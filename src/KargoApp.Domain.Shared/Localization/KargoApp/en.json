@@ -5,6 +5,9 @@
     "Menu:Home": "Home",
     "LongWelcomeMessage": "Welcome to the application. This is a startup project based on the ABP framework. For more information visit",
     "Welcome": "Welcome",
-    "KargoApp:ShipmentCannotBeCancelled": "Shipment cannot be cancelled because its status is {CurrentStatus}."
+    "KargoApp:ShipmentCannotBeCancelled": "Shipment cannot be cancelled because its status is {CurrentStatus}.",
+    "KargoApp:InvalidShipmentStatusTransition": "Movement {MovementType} cannot be applied to a shipment in {CurrentStatus} status.",
+    "KargoApp:DuplicateScan": "Scan {ScanId} has already been processed.",
+    "KargoApp:BranchNotFound": "Branch {BranchCode} not found."
   }
 }

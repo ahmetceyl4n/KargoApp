@@ -12,6 +12,11 @@
     <ProjectReference Include="..\KargoApp.Domain.Shared\KargoApp.Domain.Shared.csproj" />
   </ItemGroup>
 
+  <!-- Unit testler internal constructor'ları (new Shipment(...)) kullanabilsin -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="KargoApp.Domain.Tests" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="Volo.Abp.Emailing" Version="10.7.0" />
     <PackageReference Include="Volo.Abp.Caching" Version="10.7.0" />

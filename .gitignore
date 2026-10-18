@@ -296,3 +296,4 @@ src/KargoApp.DbMigrator/appsettings.secrets.json
 # Kisisel calisma dosyalari (yerelde kalir)
 CLAUDE.md
 NOTLAR.md
+KAVRAMLAR.md

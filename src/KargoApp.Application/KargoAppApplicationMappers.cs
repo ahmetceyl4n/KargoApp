@@ -13,3 +13,11 @@ public partial class ShipmentToShipmentDtoMapper : MapperBase<Shipment, Shipment
 
     public override partial void Map(Shipment source, ShipmentDto destination);
 }
+
+[Mapper(RequiredMappingStrategy = RequiredMappingStrategy.Target)]
+public partial class ShipmentMovementToShipmentMovementDtoMapper : MapperBase<ShipmentMovement, ShipmentMovementDto>
+{
+    public override partial ShipmentMovementDto Map(ShipmentMovement source);
+
+    public override partial void Map(ShipmentMovement source, ShipmentMovementDto destination);
+}

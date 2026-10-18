@@ -3,6 +3,9 @@
   "texts": {
     "AppName": "KargoApp",
     "KargoApp:ShipmentCannotBeCancelled": "Kargo {CurrentStatus} durumunda olduğu için iptal edilemez.",
+    "KargoApp:InvalidShipmentStatusTransition": "{CurrentStatus} durumundaki kargoya {MovementType} hareketi uygulanamaz.",
+    "KargoApp:DuplicateScan": "{ScanId} okutması daha önce işlenmiş.",
+    "KargoApp:BranchNotFound": "{BranchCode} şubesi bulunamadı.",
     "Menu:Home": "Ana sayfa",
     "Menu:ContactUs": "Bize Ulaşın",
     "Menu:ArticleSample": "Yazı Örneği",

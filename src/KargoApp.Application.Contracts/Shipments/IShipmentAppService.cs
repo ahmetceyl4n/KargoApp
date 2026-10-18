@@ -1,4 +1,5 @@
 using System.Threading.Tasks;
+using Volo.Abp.Application.Dtos;
 using Volo.Abp.Application.Services;
 
 namespace KargoApp.Shipments;
@@ -10,4 +11,8 @@ public interface IShipmentAppService : IApplicationService
     Task<ShipmentDto> GetByTrackingNumberAsync(string trackingNumber);
 
     Task<ShipmentDto> CancelAsync(string trackingNumber);
+
+    Task<ShipmentDto> AddMovementAsync(string trackingNumber, AddMovementDto input);
+
+    Task<ListResultDto<ShipmentMovementDto>> GetHistoryAsync(string trackingNumber);
 }
