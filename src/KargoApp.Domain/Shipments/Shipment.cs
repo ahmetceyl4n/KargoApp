@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using Volo.Abp;
 using Volo.Abp.Domain.Entities.Auditing;
 
@@ -41,5 +43,43 @@ public class Shipment : FullAuditedAggregateRoot<Guid>
         }
 
         Status = ShipmentStatus.Cancelled;
+    }
+
+    // Geçiş tablosu (PLAN.md → "Durumlar ve geçerli geçişler"):
+    // Kargo bu durumdayken şu hareketler kabul edilir.
+    private static readonly Dictionary<ShipmentStatus, MovementType[]> AllowedMovements = new()
+    {
+        [ShipmentStatus.Created]        = new[] { MovementType.DepartedBranch },
+        [ShipmentStatus.InTransit]      = new[] { MovementType.ArrivedAtBranch },
+        [ShipmentStatus.AtBranch]       = new[] { MovementType.DepartedBranch, MovementType.OutForDelivery },
+        [ShipmentStatus.OutForDelivery] = new[] { MovementType.Delivered, MovementType.DeliveryFailed },
+        [ShipmentStatus.Delivered]      = Array.Empty<MovementType>(),
+        [ShipmentStatus.Cancelled]      = Array.Empty<MovementType>(),
+    };
+
+    public void ApplyMovement(MovementType movementType, string branchCode, DateTime occurredAt)
+    {
+        // 1. Bu durumdayken bu hareket kabul ediliyor mu?
+        if (!AllowedMovements[Status].Contains(movementType))
+        {
+            throw new BusinessException(KargoAppDomainErrorCodes.InvalidShipmentStatusTransition)
+                .WithData("CurrentStatus", Status)
+                .WithData("MovementType", movementType);
+        }
+
+        // 2. Hareketin götürdüğü yeni durum
+        Status = movementType switch
+        {
+            MovementType.DepartedBranch  => ShipmentStatus.InTransit,
+            MovementType.ArrivedAtBranch => ShipmentStatus.AtBranch,
+            MovementType.OutForDelivery  => ShipmentStatus.OutForDelivery,
+            MovementType.Delivered       => ShipmentStatus.Delivered,
+            MovementType.DeliveryFailed  => ShipmentStatus.AtBranch,
+            _ => throw new ArgumentOutOfRangeException(nameof(movementType))
+        };
+
+        // 3. Son konum ve zaman
+        LastBranchCode = branchCode;
+        LastMovementAt = occurredAt;
     }
 }

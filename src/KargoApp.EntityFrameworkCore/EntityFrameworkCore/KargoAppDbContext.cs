@@ -26,6 +26,7 @@ public class KargoAppDbContext :
     /* Add DbSet properties for your Aggregate Roots / Entities here. */
     public DbSet<Shipment> Shipments { get; set; }
     public DbSet<Branch> Branches { get; set; }
+    public DbSet<ShipmentMovement> ShipmentMovements { get; set; }
 
     #region Entities from the modules
 
@@ -98,6 +99,22 @@ public class KargoAppDbContext :
             b.Property(x => x.Id).HasColumnName("Code").HasMaxLength(BranchConsts.MaxCodeLength);
             b.Property(x => x.Name).IsRequired().HasMaxLength(BranchConsts.MaxNameLength);
             b.Property(x => x.City).IsRequired().HasMaxLength(BranchConsts.MaxCityLength);
+        });
+
+        builder.Entity<ShipmentMovement>(b =>
+        {
+            b.ToTable(KargoAppConsts.DbTablePrefix + "ShipmentMovements", KargoAppConsts.DbSchema);
+            b.ConfigureByConvention();
+
+            b.Property(x => x.BranchCode).IsRequired().HasMaxLength(BranchConsts.MaxCodeLength);
+
+            b.HasIndex(x => x.ScanId).IsUnique();                 // aynı okutma iki kez yazılamaz
+            b.HasIndex(x => new { x.ShipmentId, x.OccurredAt });  // geçmiş sorgusu: WHERE ShipmentId ORDER BY OccurredAt
+
+            // Navigation property yok (Shipment.Movements tutmuyoruz), sadece veritabanı kısıtı.
+            b.HasOne<Shipment>().WithMany()
+             .HasForeignKey(x => x.ShipmentId)
+             .IsRequired();
         });
     }
 }
