@@ -1,7 +1,4 @@
 <Solution>
-    <Configurations>
-        <Platform Name="Any CPU" />
-    </Configurations>
     <Folder Name="/src/">
         <Project Path="src/KargoApp.Domain/KargoApp.Domain.csproj" />
         <Project Path="src/KargoApp.Application/KargoApp.Application.csproj" />
@@ -12,6 +9,8 @@
         <Project Path="src/KargoApp.HttpApi.Client/KargoApp.HttpApi.Client.csproj" />
         <Project Path="src/KargoApp.HttpApi.Host/KargoApp.HttpApi.Host.csproj" />
         <Project Path="src/KargoApp.DbMigrator/KargoApp.DbMigrator.csproj" />
+        <Project Path="src/KargoApp.Simulator/KargoApp.Simulator.csproj" />
+        <Project Path="src/KargoApp.Worker/KargoApp.Worker.csproj" />
     </Folder>
     <Folder Name="/test/">
         <Project Path="test/KargoApp.Application.Tests/KargoApp.Application.Tests.csproj" />

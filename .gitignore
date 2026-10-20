@@ -297,3 +297,5 @@ src/KargoApp.DbMigrator/appsettings.secrets.json
 CLAUDE.md
 NOTLAR.md
 KAVRAMLAR.md
+src/KargoApp.Worker/appsettings.secrets.json
+src/KargoApp.Simulator/appsettings.secrets.json
