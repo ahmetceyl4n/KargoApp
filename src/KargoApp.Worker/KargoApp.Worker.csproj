@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <Import Project="..\..\common.props" />
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <RootNamespace>KargoApp.Worker</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Serilog.AspNetCore" Version="9.0.0" />
+    <PackageReference Include="Serilog.Sinks.Async" Version="2.1.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.11" />
+    <PackageReference Include="Volo.Abp.Autofac" Version="10.7.0" />
+    <PackageReference Include="Volo.Abp.EventBus.RabbitMQ" Version="10.7.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Şimdilik sadece ScanEto için. Aşama 4'te EntityFrameworkCore'a geçecek. -->
+    <ProjectReference Include="..\KargoApp.Domain.Shared\KargoApp.Domain.Shared.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="appsettings.json" CopyToOutputDirectory="Always" />
+    <!-- secrets dosyası commit'lenmez; temiz klonda yoksa derleme hata vermesin -->
+    <Content Include="appsettings.secrets.json" Condition="Exists('appsettings.secrets.json')" CopyToOutputDirectory="Always" />
+  </ItemGroup>
+
+</Project>
