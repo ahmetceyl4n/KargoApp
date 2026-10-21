@@ -27,6 +27,7 @@ public class KargoAppDbContext :
     public DbSet<Shipment> Shipments { get; set; }
     public DbSet<Branch> Branches { get; set; }
     public DbSet<ShipmentMovement> ShipmentMovements { get; set; }
+    public DbSet<IncomingScan> IncomingScans { get; set; }
 
     #region Entities from the modules
 
@@ -115,6 +116,19 @@ public class KargoAppDbContext :
             b.HasOne<Shipment>().WithMany()
              .HasForeignKey(x => x.ShipmentId)
              .IsRequired();
+        });
+
+        builder.Entity<IncomingScan>(b =>
+        {
+            b.ToTable(KargoAppConsts.DbTablePrefix + "IncomingScans", KargoAppConsts.DbSchema);
+            b.ConfigureByConvention();
+
+            b.Property(x => x.TrackingNumber).IsRequired().HasMaxLength(ShipmentConsts.TrackingNumberLength);
+            b.Property(x => x.BranchCode).IsRequired().HasMaxLength(BranchConsts.MaxCodeLength);
+            b.Property(x => x.Error).HasMaxLength(IncomingScanConsts.MaxErrorLength);
+
+            // Şeritlerin sorgusu: "bekleyen okutması olan kargolar". Sadece bekleyen satırlar indekslenir.
+            b.HasIndex(x => x.TrackingNumber).HasFilter("\"ProcessedAt\" IS NULL");
         });
     }
 }

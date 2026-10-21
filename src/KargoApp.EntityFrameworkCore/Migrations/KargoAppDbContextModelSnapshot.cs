@@ -46,6 +46,45 @@ namespace KargoApp.Migrations
                     b.ToTable("AppBranches", (string)null);
                 });
 
+            modelBuilder.Entity("KargoApp.Shipments.IncomingScan", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("BranchCode")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)");
+
+                    b.Property<string>("Error")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<int>("MovementType")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("OccurredAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<DateTime?>("ProcessedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<DateTime>("ReceivedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("TrackingNumber")
+                        .IsRequired()
+                        .HasMaxLength(13)
+                        .HasColumnType("character varying(13)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TrackingNumber")
+                        .HasFilter("\"ProcessedAt\" IS NULL");
+
+                    b.ToTable("AppIncomingScans", (string)null);
+                });
+
             modelBuilder.Entity("KargoApp.Shipments.Shipment", b =>
                 {
                     b.Property<Guid>("Id")

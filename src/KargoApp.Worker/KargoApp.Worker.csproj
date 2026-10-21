@@ -18,8 +18,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Şimdilik sadece ScanEto için. Aşama 4'te EntityFrameworkCore'a geçecek. -->
-    <ProjectReference Include="..\KargoApp.Domain.Shared\KargoApp.Domain.Shared.csproj" />
+    <!-- DB + Domain (ShipmentManager, repository'ler); Domain.Shared da bununla gelir -->
+    <ProjectReference Include="..\KargoApp.EntityFrameworkCore\KargoApp.EntityFrameworkCore.csproj" />
   </ItemGroup>
 
   <ItemGroup>

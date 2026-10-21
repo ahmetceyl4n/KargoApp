@@ -47,10 +47,18 @@ public class ShipmentManager : DomainService
                 .WithData("BranchCode", branchCode);
         }
 
+        // 3 + 4. Kural ve hareket kaydı
+        return ApplyMovement(shipment, scanId, branchCode, movementType, occurredAt);
+    }
+
+    // Toplu işleme (worker) için: DB kontrolleri (tekrar okutma, şube) çağıran tarafta toplu yapılır.
+    public ShipmentMovement ApplyMovement(Shipment shipment, Guid scanId,
+        string branchCode, MovementType movementType, DateTime occurredAt)
+    {
         // 3. Kargonun kendi kuralı
         shipment.ApplyMovement(movementType, branchCode, occurredAt);
 
-        // 4. Hareket kaydı (internal constructor'ı sadece burası çağırabilir)
+        // 4. Hareket kaydı (internal constructor'ı sadece Domain çağırabilir)
         return new ShipmentMovement(GuidGenerator.Create(), shipment.Id, scanId,
                                     branchCode, movementType, occurredAt);
     }
