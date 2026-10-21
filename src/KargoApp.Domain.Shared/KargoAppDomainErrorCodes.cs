@@ -6,4 +6,5 @@ public static class KargoAppDomainErrorCodes
     public const string InvalidShipmentStatusTransition = "KargoApp:InvalidShipmentStatusTransition";
     public const string DuplicateScan = "KargoApp:DuplicateScan";
     public const string BranchNotFound = "KargoApp:BranchNotFound";
+    public const string ShipmentNotFound = "KargoApp:ShipmentNotFound";
 }
