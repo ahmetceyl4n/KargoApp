@@ -17,16 +17,19 @@ public class ScanEtoHandler : IDistributedEventHandler<ScanEto>, ITransientDepen
 {
     private readonly IRepository<IncomingScan, Guid> _incomingScanRepository;
     private readonly IUnitOfWorkManager _unitOfWorkManager;
+    private readonly DeadLetterPublisher _deadLetterPublisher;
     private readonly IClock _clock;
     private readonly ILogger<ScanEtoHandler> _logger;
 
     public ScanEtoHandler(IRepository<IncomingScan, Guid> incomingScanRepository,
                           IUnitOfWorkManager unitOfWorkManager,
+                          DeadLetterPublisher deadLetterPublisher,
                           IClock clock,
                           ILogger<ScanEtoHandler> logger)
     {
         _incomingScanRepository = incomingScanRepository;
         _unitOfWorkManager = unitOfWorkManager;
+        _deadLetterPublisher = deadLetterPublisher;
         _clock = clock;
         _logger = logger;
     }
@@ -48,5 +51,20 @@ public class ScanEtoHandler : IDistributedEventHandler<ScanEto>, ITransientDepen
             // Aynı ScanId zaten tabloda: mesaj ikinci kez gelmiş. Sorun değil, geç (idempotency).
             _logger.LogDebug("Okutma zaten alınmış: {ScanId}", eventData.ScanId);
         }
+        catch (DbUpdateException ex) when (ex.InnerException is PostgresException pg && IsPermanentDataError(pg.SqlState))
+        {
+            // Veri bozuk: kaç kez denesen aynı sonuç. Dead-letter'a taşı, hata fırlatma → ABP ack gönderir.
+            // (Hata fırlatsaydık ABP mesajı geri koyardı ve sonsuz döngü olurdu.)
+            await _deadLetterPublisher.SendAsync(eventData, $"{pg.SqlState}: {pg.MessageText}");
+            _logger.LogWarning("Zehirli mesaj dead-letter'a taşındı {ScanId}: {Error}", eventData.ScanId, pg.MessageText);
+        }
+        // Diğer her hata (DB koptu, zaman aşımı) yakalanmaz → ABP geri koyar → tekrar denenir
+    }
+
+    // PostgreSQL hata sınıfları: 22 = veri hatası (değer çok uzun, geçersiz format),
+    // 23 = kısıt ihlali (unique yukarıda ayrıca yakalandı; catch sırası bu yüzden önemli)
+    private static bool IsPermanentDataError(string sqlState)
+    {
+        return sqlState.StartsWith("22") || sqlState.StartsWith("23");
     }
 }

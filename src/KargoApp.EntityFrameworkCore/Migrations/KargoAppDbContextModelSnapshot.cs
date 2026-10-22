@@ -51,6 +51,9 @@ namespace KargoApp.Migrations
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid");
 
+                    b.Property<int>("AttemptCount")
+                        .HasColumnType("integer");
+
                     b.Property<string>("BranchCode")
                         .IsRequired()
                         .HasMaxLength(8)
@@ -62,6 +65,9 @@ namespace KargoApp.Migrations
 
                     b.Property<int>("MovementType")
                         .HasColumnType("integer");
+
+                    b.Property<DateTime?>("NextAttemptAt")
+                        .HasColumnType("timestamp without time zone");
 
                     b.Property<DateTime>("OccurredAt")
                         .HasColumnType("timestamp without time zone");
