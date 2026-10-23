@@ -11,4 +11,10 @@ public class ScanProcessingOptions
 
     // İş yoksa kaç ms bekler
     public int IdleDelayMs { get; set; } = 1000;
+
+    // Geçersiz geçişte en fazla kaç deneme (sonra kalıcı hata)
+    public int MaxAttempts { get; set; } = 5;
+
+    // İlk bekleme süresi; her denemede ikiye katlanır (2, 4, 8, 16 sn)
+    public int RetryDelayMs { get; set; } = 2000;
 }

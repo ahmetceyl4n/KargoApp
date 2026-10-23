@@ -1,11 +1,13 @@
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.Linq;
-using System.Threading.Tasks;
 using KargoApp.EntityFrameworkCore;
 using KargoApp.Shipments;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Linq;
+using System.Threading.Tasks;
 using Volo.Abp;
 using Volo.Abp.DependencyInjection;
 using Volo.Abp.EntityFrameworkCore;
@@ -21,27 +23,34 @@ public class ScanBatchHandler : ITransientDependency
     private readonly IUnitOfWorkManager _unitOfWorkManager;
     private readonly ShipmentManager _shipmentManager;
     private readonly ScanStats _stats;
+    private readonly SharedScanCounter _sharedCounter;
     private readonly IClock _clock;
     private readonly ILogger<ScanBatchHandler> _logger;
+    private readonly ScanProcessingOptions _options;
 
     public ScanBatchHandler(IDbContextProvider<KargoAppDbContext> dbContextProvider,
                             IUnitOfWorkManager unitOfWorkManager,
                             ShipmentManager shipmentManager,
                             ScanStats stats,
+                            SharedScanCounter sharedCounter,
                             IClock clock,
-                            ILogger<ScanBatchHandler> logger)
+                            ILogger<ScanBatchHandler> logger,
+                            IOptions<ScanProcessingOptions> options)
     {
         _dbContextProvider = dbContextProvider;
         _unitOfWorkManager = unitOfWorkManager;
         _shipmentManager = shipmentManager;
         _stats = stats;
+        _sharedCounter = sharedCounter;
         _clock = clock;
         _logger = logger;
+        _options = options.Value;
     }
 
     // İşlenen okutma sayısını döner; 0 = iş yok
     public async Task<int> ProcessNextBatchAsync(int lane, int maxShipments)
     {
+        var now = _clock.Now;
         var stopwatch = Stopwatch.StartNew();
 
         // a) Transaction aç: paket ya hep ya hiç
@@ -55,7 +64,8 @@ public class ScanBatchHandler : ITransientDependency
                 SELECT * FROM ""AppShipments""
                 WHERE ""IsDeleted"" = false
                   AND ""TrackingNumber"" IN (SELECT ""TrackingNumber"" FROM ""AppIncomingScans""
-                                             WHERE ""ProcessedAt"" IS NULL)
+                                             WHERE ""ProcessedAt"" IS NULL
+                                               AND (""NextAttemptAt"" IS NULL OR ""NextAttemptAt"" <= {now}))
                 LIMIT {maxShipments}
                 FOR UPDATE SKIP LOCKED")
             .IgnoreQueryFilters()
@@ -84,14 +94,23 @@ public class ScanBatchHandler : ITransientDependency
         // d) Kuralı uygula; hatalı okutma paketi düşürmez
         var shipmentsByTracking = shipments.ToDictionary(s => s.TrackingNumber);
         var movements = new List<ShipmentMovement>();
+        var blocked = new Dictionary<string, DateTime>();   // bu pakette takılan kargo → ne zamana kadar beklesin
+        var deferred = 0;
         var failed = 0;
-        var now = _clock.Now;
 
         foreach (var scan in scans)
         {
             if (alreadyApplied.Contains(scan.Id))
             {
                 scan.MarkProcessed(now);   // daha önce uygulanmış (ör. API'den), sessizce geç
+                continue;
+            }
+
+            // Bu kargonun önceki okutması bu pakette ertelendiyse, bu okutma onunla birlikte beklesin
+            // (denenmez, deneme hakkı da yanmaz)
+            if (blocked.TryGetValue(scan.TrackingNumber, out var waitUntil))
+            {
+                scan.WaitUntil(waitUntil);
                 continue;
             }
 
@@ -106,12 +125,22 @@ public class ScanBatchHandler : ITransientDependency
                     scan.Id, scan.BranchCode, scan.MovementType, scan.OccurredAt));
                 scan.MarkProcessed(now);
             }
+            // Geçersiz geçiş ve hâlâ hakkı var → ertele: belki önceki okutma yolda (2, 4, 8, 16 sn)
+            catch (BusinessException ex) when (ex.Code == KargoAppDomainErrorCodes.InvalidShipmentStatusTransition
+                                               && scan.AttemptCount + 1 < _options.MaxAttempts)
+            {
+                var nextAttemptAt = now.AddMilliseconds(_options.RetryDelayMs * Math.Pow(2, scan.AttemptCount));
+                scan.Defer(ex.Code, nextAttemptAt);
+                blocked[scan.TrackingNumber] = nextAttemptAt;
+                deferred++;
+            }
+            // Kalıcı hata (şube yok) ya da deneme hakkı bitti
             catch (BusinessException ex)
             {
                 scan.MarkFailed(ex.Code!, now);
                 failed++;
-                _logger.LogWarning("Okutma atlandı {ScanId} {TrackingNumber} {MovementType}: {Error}",
-                    scan.Id, scan.TrackingNumber, scan.MovementType, ex.Code);
+                _logger.LogWarning("Okutma atlandı {ScanId} {TrackingNumber} {MovementType} ({Attempt}. deneme): {Error}",
+                    scan.Id, scan.TrackingNumber, scan.MovementType, scan.AttemptCount + 1, ex.Code);
             }
         }
 
@@ -125,9 +154,20 @@ public class ScanBatchHandler : ITransientDependency
             _stats.RecordProcessed(movement.BranchCode);
         }
         _stats.RecordFailed(failed);
+        _stats.RecordDeferred(deferred);
 
-        _logger.LogInformation("Şerit {Lane}: {Shipments} kargo, {Scans} okutma ({Failed} hatalı), {Ms} ms",
-            lane, shipments.Count, scans.Count, failed, stopwatch.ElapsedMilliseconds);
+        // Ortak defter (bütün worker'lar). Sayaç ikincil bilgi: Redis'e ulaşılamazsa paketi bozma, sadece uyar.
+        try
+        {
+            await _sharedCounter.RecordAsync(movements.Select(m => m.BranchCode), failed, deferred);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Ortak sayaç güncellenemedi (Redis)");
+        }
+
+        _logger.LogInformation("Şerit {Lane}: {Shipments} kargo, {Scans} okutma ({Deferred} ertelendi, {Failed} hatalı), {Ms} ms",
+            lane, shipments.Count, scans.Count, deferred, failed, stopwatch.ElapsedMilliseconds);
 
         return scans.Count;
     }
