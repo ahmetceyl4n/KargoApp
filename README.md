@@ -2,7 +2,7 @@
 
 Bir kargo takip sistemi üzerinden **ABP Framework**, **background worker**, **concurrency**, **RabbitMQ** ve **Redis** öğrenmek için yazılmış bir proje.
 
-Amaç ürün değil, her aşamada bir konuyu gerçekten kavramak. Her aşama ayrı bir PR. Kararlar bilerek ölçülüp denendi: worker'ı ortasında öldürmek, RabbitMQ'yu kapatmak, iki worker'ı aynı anda çalıştırmak, bozuk mesaj göndermek gibi.
+Amaç ürün değil, her aşamada bir konuyu gerçekten kavramak. Her aşama ayrı bir PR. Tasarım kararları sadece yazılıp bırakılmadı, bilerek bozularak denendi: worker işlem ortasında öldürüldü, RabbitMQ kapatıldı, iki worker aynı anda çalıştırıldı, bozuk mesaj gönderildi. Sonuçlar aşağıdaki tablolarda.
 
 **Teknolojiler:** ABP 10.7 (.NET 10, layered template, UI yok) · PostgreSQL · RabbitMQ 4 (ABP Distributed Event Bus) · Redis · EF Core · Serilog · Docker Compose
 
@@ -12,16 +12,35 @@ Amaç ürün değil, her aşamada bir konuyu gerçekten kavramak. Her aşama ayr
 
 ```mermaid
 flowchart LR
-    SIM[Simulator<br/>şube okutmaları] -- "ScanEto<br/>(ABP Event Bus)" --> RMQ1[(RabbitMQ<br/>KargoApp.Worker queue)]
-    RMQ1 --> W[KargoApp.Worker]
-    W -- "inbox tablosu +<br/>paralel lane'ler" --> PG[(PostgreSQL<br/>KargoApp)]
-    W -- "shared counter" --> R[(Redis)]
-    W -- "poison message" --> DLQ[(Dead-letter queue)]
-    W -- "ShipmentDeliveredEto<br/>(transactional outbox)" --> RMQ2[(RabbitMQ<br/>KargoApp.Notifier queue)]
-    RMQ2 --> N[KargoApp.Notifier]
-    N -- "ABP inbox" --> PGN[(PostgreSQL<br/>KargoNotifier)]
-    API[KargoApp API<br/>Swagger] --> PG
-    API -- cache --> R
+    SIM[Simulator<br/>şube okutmaları]
+    API[KargoApp API<br/>Swagger]
+    W[KargoApp.Worker]
+    N[KargoApp.Notifier]
+
+    subgraph RMQ [RabbitMQ · KargoApp exchange]
+        Q1[[KargoApp.Worker queue]]
+        Q2[[KargoApp.Notifier queue]]
+        Q3[[KargoApp.Worker.DeadLetter queue]]
+    end
+
+    subgraph PGS [PostgreSQL]
+        PG[(KargoApp DB)]
+        PGN[(KargoNotifier DB)]
+    end
+
+    R[(Redis)]
+
+    SIM -- "ScanEto" --> Q1
+    Q1 --> W
+    W -- "inbox tablosu, lane'ler, outbox" --> PG
+    W -- "poison message" --> Q3
+    W -- "ShipmentDeliveredEto (outbox üzerinden)" --> Q2
+    W -- "shared counter, distributed lock" --> R
+    Q2 --> N
+    N -- "ABP inbox" --> PGN
+    N -- "distributed lock" --> R
+    API --> PG
+    API -- "cache" --> R
 ```
 
 | Bileşen | Görevi |
@@ -31,13 +50,17 @@ flowchart LR
 | **Worker** | Okutmaları toplu ve paralel işler; kargo teslim edilince outbox'a olay yazar. |
 | **Notifier** | Ayrı bir servis. Teslim olaylarını ABP inbox'ı ile alır ve müşteriye bildirim gönderir (log'a yazar). |
 
-API ve Worker aynı Domain projesini kullanır; kargo durum geçiş kuralları tek yerde (`Shipment.ApplyMovement`) durur.
+API ve Worker aynı Domain projesini kullanır; kargo durum geçiş kuralları tek yerde (`Shipment.ApplyMovement`) durur:
 
-```text
-Created ─Departed─► InTransit ─Arrived─► AtBranch ─OutForDelivery─► OutForDelivery ─Delivered─► Delivered
-                        ▲                   │  ▲                                        │
-                        └─────Departed──────┘  └────────────DeliveryFailed──────────────┘
-```
+| Mevcut durum | İzin verilen okutma → yeni durum |
+| --- | --- |
+| `Created` | `DepartedBranch` → `InTransit` |
+| `InTransit` | `ArrivedAtBranch` → `AtBranch` |
+| `AtBranch` | `DepartedBranch` → `InTransit`, `OutForDelivery` → `OutForDelivery` |
+| `OutForDelivery` | `Delivered` → `Delivered`, `DeliveryFailed` → `AtBranch` |
+| `Delivered`, `Cancelled` | Hiçbiri (son durum) |
+
+Bunun dışındaki her okutma `BusinessException` (`KargoAppDomainErrorCodes.InvalidShipmentStatusTransition`) ile reddedilir.
 
 ---
 
@@ -58,7 +81,7 @@ Created ─Departed─► InTransit ─Arrived─► AtBranch ─OutForDelivery�
 
 ### 1. Mesajı kaybetmeden, toplu işlemek: kendi inbox tablomuz
 
-ABP'nin hazır inbox'ı olayları **tek tek** ve global bir distributed lock altında sırayla işliyor; yüksek hacimli okutma için uygun değil. Bu yüzden:
+ABP'nin hazır inbox'ı handler'ı her olay için **tek tek** çağırıyor ve bunu global bir distributed lock altında sırayla yapıyor. Handler okutmayı toplu işlemek için bir pakete koyup beklerse ABP olayı "işlendi" sayıyor; paket yazılamadan worker çökerse okutma kaybolur. Toplu ve paralel işleme ile kayıpsızlığı birlikte sağlamak için inbox elle kuruldu:
 
 - `ScanEtoHandler` gelen okutmayı sadece `AppIncomingScans` tablosuna yazar; ABP sonra ack eder. Böylece RabbitMQ'dan mesaj, DB'ye kaydedilmeden asla silinmez.
 - **Idempotency:** ScanId primary key. Aynı mesaj ikinci kez gelirse `UniqueViolation` yakalanır ve atlanır.
@@ -66,22 +89,27 @@ ABP'nin hazır inbox'ı olayları **tek tek** ve global bir distributed lock alt
 
 ### 2. Paralel ama çakışmasız: `FOR UPDATE SKIP LOCKED`
 
-```sql
-SELECT * FROM "AppShipments"
-WHERE "TrackingNumber" IN (SELECT "TrackingNumber" FROM "AppIncomingScans"
-                           WHERE "ProcessedAt" IS NULL
-                             AND ("NextAttemptAt" IS NULL OR "NextAttemptAt" <= now))
-LIMIT 50
-FOR UPDATE SKIP LOCKED
+```csharp
+// ScanBatchHandler: EF Core FromSqlInterpolated, {…} değerleri SQL parametresi olarak gider
+var shipments = await db.Shipments.FromSqlInterpolated($@"
+    SELECT * FROM ""AppShipments""
+    WHERE ""IsDeleted"" = false
+      AND ""TrackingNumber"" IN (SELECT ""TrackingNumber"" FROM ""AppIncomingScans""
+                                 WHERE ""ProcessedAt"" IS NULL
+                                   AND (""NextAttemptAt"" IS NULL OR ""NextAttemptAt"" <= {now}))
+    LIMIT {maxShipments}
+    FOR UPDATE SKIP LOCKED")
+    .IgnoreQueryFilters()
+    .ToListAsync();
 ```
 
 - Kilit **okutmaya değil kargoya** konur: aynı kargonun okutmaları aynı anda iki lane'de işlenemez.
 - `SKIP LOCKED`: başkasının tuttuğu kargoyu beklemeden atla, boşta olanı al. Lane'ler ve birden çok worker kopyası birbirini hiç beklemez.
-- Kilit transaction'la birlikte açılır; worker çökerse PostgreSQL kilidi anında bırakır. Redis lock gerekmez.
+- Kilit transaction'la birlikte açılır; worker çökerse PostgreSQL kilidi anında bırakır. Kargo kilidi için Redis lock gerekmez. Projede Redis lock sadece ABP'nin outbox/inbox işleyicileri için kullanılıyor (bkz. 5).
 
 ### 3. Sırasız gelen mesajlar: exponential backoff
 
-İki worker çalışınca aynı kargonun okutmaları farklı sırayla ulaşabiliyor ("Vardı", "Çıktı"dan önce geliyor). İlk denemede 10.000 okutmanın **3.279'u** reddedildi.
+RabbitMQ mesajları iki worker'a dağıtınca aynı kargonun okutmaları DB'ye farklı sırayla düşebiliyor. Örneğin `ArrivedAtBranch`, kendisinden önce olması gereken `DepartedBranch`'ten önce işlenmeye çalışılıyor ve geçiş kuralı onu reddediyor. İlk denemede 10.000 okutmanın **3.279'u** bu yüzden reddedildi.
 
 - Geçersiz geçiş hemen hata sayılmaz: okutma **ertelenir** (2 → 4 → 8 → 16 sn), 5. denemede de geçersizse hatalı işaretlenir.
 - Aynı kargonun paketteki sonraki okutmaları onunla birlikte bekler (deneme hakları yanmaz).
@@ -158,14 +186,21 @@ Her worker kendi bellek içi sayacını tutuyordu; iki worker'ın toplamı gör�
    cp .env.example .env          # şifreleri doldur
    docker compose up -d
    ```
-2. Şifreler commit'lenmez. Şu projelerde `appsettings.secrets.json` oluştur: `HttpApi.Host`, `DbMigrator`, `Worker`, `Simulator`, `Notifier`.
+2. Şifreler commit'lenmez; her projenin klasöründe `appsettings.secrets.json` oluştur (şifreler `.env`'deki değerler):
+
+   | Proje | Gerekenler |
+   | --- | --- |
+   | `HttpApi.Host`, `DbMigrator` | `ConnectionStrings:Default` |
+   | `Worker`, `Simulator` | `ConnectionStrings:Default` + RabbitMQ şifresi |
+   | `Notifier` | `ConnectionStrings:Notifier` (veritabanı `KargoNotifier`) + RabbitMQ şifresi |
+
+   Örnek (Worker):
    ```json
    {
-     "ConnectionStrings": { "Default": "Host=localhost;Port=5432;Database=KargoApp;User ID=kargo;Password=<şifre>;" },
-     "RabbitMQ": { "Connections": { "Default": { "Password": "<şifre>" } } }
+     "ConnectionStrings": { "Default": "Host=localhost;Port=5432;Database=KargoApp;User ID=kargo;Password=<POSTGRES_PASSWORD>;" },
+     "RabbitMQ": { "Connections": { "Default": { "Password": "<RABBITMQ_PASSWORD>" } } }
    }
    ```
-   Notifier'da connection string'in adı `Notifier`, veritabanı `KargoNotifier`.
 3. Veritabanı: `dotnet run --project src/KargoApp.DbMigrator`
 4. Dead-letter için RabbitMQ arayüzünden (`http://localhost:15672`) bir kez elle kur:
    - Exchange: `KargoApp.DeadLetter` (fanout)
