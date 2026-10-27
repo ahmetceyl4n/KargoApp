@@ -1,66 +1,187 @@
 # KargoApp
 
-## About this solution
+Bir kargo takip sistemi üzerinden **ABP Framework**, **background worker**, **concurrency**, **RabbitMQ** ve **Redis** öğrenmek için yazılmış bir proje.
 
-This is a layered startup solution based on [Domain Driven Design (DDD)](https://abp.io/docs/latest/framework/architecture/domain-driven-design) practises. All the fundamental ABP modules are already installed. Check the [Application Startup Template](https://abp.io/docs/latest/solution-templates/layered-web-application) documentation for more info.
+Amaç ürün değil, her aşamada bir konuyu gerçekten kavramak. Her aşama ayrı bir PR. Kararlar bilerek ölçülüp denendi: worker'ı ortasında öldürmek, RabbitMQ'yu kapatmak, iki worker'ı aynı anda çalıştırmak, bozuk mesaj göndermek gibi.
 
-### Pre-requirements
+**Teknolojiler:** ABP 10.7 (.NET 10, layered template, UI yok) · PostgreSQL · RabbitMQ 4 (ABP Distributed Event Bus) · Redis · EF Core · Serilog · Docker Compose
 
-* [.NET10.0+ SDK](https://dotnet.microsoft.com/download/dotnet)
-* [Node v18 or 20](https://nodejs.org/en)
+---
 
-### Configurations
+## Mimari
 
-The solution comes with a default configuration that works out of the box. However, you may consider to change the following configuration before running your solution:
-
-
-### Before running the application
-
-* Run `abp install-libs` command on your solution folder to install client-side package dependencies. This step is automatically done when you create a new solution, if you didn't especially disabled it. However, you should run it yourself if you have first cloned this solution from your source control, or added a new client-side package dependency to your solution.
-* Run `KargoApp.DbMigrator` to create the initial database. This step is also automatically done when you create a new solution, if you didn't especially disabled it. This should be done in the first run. It is also needed if a new database migration is added to the solution later.
-
-#### Generating a Signing Certificate
-
-In the production environment, you need to use a production signing certificate. ABP Framework sets up signing and encryption certificates in your application and expects an `openiddict.pfx` file in your application.
-
-To generate a signing certificate, you can use the following command:
-
-```bash
-dotnet dev-certs https -v -ep openiddict.pfx -p ad5378c3-590c-4328-8d8a-24cac279f61e
+```mermaid
+flowchart LR
+    SIM[Simulator<br/>şube okutmaları] -- "ScanEto<br/>(ABP Event Bus)" --> RMQ1[(RabbitMQ<br/>KargoApp.Worker queue)]
+    RMQ1 --> W[KargoApp.Worker]
+    W -- "inbox tablosu +<br/>paralel lane'ler" --> PG[(PostgreSQL<br/>KargoApp)]
+    W -- "shared counter" --> R[(Redis)]
+    W -- "poison message" --> DLQ[(Dead-letter queue)]
+    W -- "ShipmentDeliveredEto<br/>(transactional outbox)" --> RMQ2[(RabbitMQ<br/>KargoApp.Notifier queue)]
+    RMQ2 --> N[KargoApp.Notifier]
+    N -- "ABP inbox" --> PGN[(PostgreSQL<br/>KargoNotifier)]
+    API[KargoApp API<br/>Swagger] --> PG
+    API -- cache --> R
 ```
 
-> `ad5378c3-590c-4328-8d8a-24cac279f61e` is the password of the certificate, you can change it to any password you want.
+| Bileşen | Görevi |
+| --- | --- |
+| **API** (`HttpApi.Host`) | Kargo oluşturma, sorgulama, iptal, tek tek hareket ekleme. Takip sorgusu Redis'te cache'lenir. |
+| **Simulator** | Şubelerin barkod okutmalarını taklit eder: kargoları oluşturur, okutmaları paralel olarak RabbitMQ'ya publish eder. |
+| **Worker** | Okutmaları toplu ve paralel işler; kargo teslim edilince outbox'a olay yazar. |
+| **Notifier** | Ayrı bir servis. Teslim olaylarını ABP inbox'ı ile alır ve müşteriye bildirim gönderir (log'a yazar). |
 
-It is recommended to use **two** RSA certificates, distinct from the certificate(s) used for HTTPS: one for encryption, one for signing.
+API ve Worker aynı Domain projesini kullanır; kargo durum geçiş kuralları tek yerde (`Shipment.ApplyMovement`) durur.
 
-For more information, please refer to: [OpenIddict Certificate Configuration](https://documentation.openiddict.com/configuration/encryption-and-signing-credentials.html#registering-a-certificate-recommended-for-production-ready-scenarios)
+```text
+Created ─Departed─► InTransit ─Arrived─► AtBranch ─OutForDelivery─► OutForDelivery ─Delivered─► Delivered
+                        ▲                   │  ▲                                        │
+                        └─────Departed──────┘  └────────────DeliveryFailed──────────────┘
+```
 
-> Also, see the [Configuring OpenIddict](https://abp.io/docs/latest/Deployment/Configuring-OpenIddict#production-environment) documentation for more information.
+---
 
-### Solution structure
+## Aşamalar
 
-This is a layered monolith application that consists of the following applications:
+| # | Konu | Öğrenilenler | PR |
+| --- | --- | --- | --- |
+| 0–1 | Kurulum, kargo oluştur / sorgula / iptal | ABP katmanları, DDD, aggregate root, Application Service, Unit of Work | [#1](../../pull/1) |
+| 2 | Kargo hareketleri, durum kuralları | Geçiş tablosu domain'de, unit test, Redis cache-aside (`IDistributedCache`) | [#2](../../pull/2) |
+| 3 | Simulator → RabbitMQ → Worker | ABP Distributed Event Bus, exchange/queue/binding, ack, `async/await`, `SemaphoreSlim`, thread pool starvation | [#3](../../pull/3) |
+| 4 | Worker: toplu ve paralel işleme | Kendi inbox tablomuz, `FOR UPDATE SKIP LOCKED`, `BackgroundService`, idempotency | [#4](../../pull/4) |
+| 5 | Yük, sırasız mesaj, poison message | Exponential backoff, dead-letter queue, Redis ile shared counter, ölçüm | [#5](../../pull/5) |
+| 6 | Teslim bildirimi | Transactional outbox / inbox (ABP), distributed lock, ayrı servis, retry politikası | [#6](../../pull/6) |
 
-* `KargoApp.DbMigrator`: A console application which applies the migrations and also seeds the initial data. It is useful on development as well as on production environment.
-* `KargoApp.HttpApi.Host`: ASP.NET Core API application that is used to expose the APIs to the clients.
+---
 
-#### Test Projects
+## Öne çıkan çözümler
 
-The `test` folder contains the following test projects:
+### 1. Mesajı kaybetmeden, toplu işlemek: kendi inbox tablomuz
 
-* `KargoApp.Application.Tests`: Application layer tests.
-* `KargoApp.Domain.Tests`: Domain layer tests.
-* `KargoApp.EntityFrameworkCore.Tests`: Entity Framework Core integration tests.
+ABP'nin hazır inbox'ı olayları **tek tek** ve global bir distributed lock altında sırayla işliyor; yüksek hacimli okutma için uygun değil. Bu yüzden:
 
+- `ScanEtoHandler` gelen okutmayı sadece `AppIncomingScans` tablosuna yazar; ABP sonra ack eder. Böylece RabbitMQ'dan mesaj, DB'ye kaydedilmeden asla silinmez.
+- **Idempotency:** ScanId primary key. Aynı mesaj ikinci kez gelirse `UniqueViolation` yakalanır ve atlanır.
+- Asıl işi sabit sayıda **lane** (`BackgroundService`) yapar: her lane DB'den bir paket kargo alır, tüm okutmalarını uygular ve tek transaction'da commit eder.
 
+### 2. Paralel ama çakışmasız: `FOR UPDATE SKIP LOCKED`
 
-## Deploying the application
+```sql
+SELECT * FROM "AppShipments"
+WHERE "TrackingNumber" IN (SELECT "TrackingNumber" FROM "AppIncomingScans"
+                           WHERE "ProcessedAt" IS NULL
+                             AND ("NextAttemptAt" IS NULL OR "NextAttemptAt" <= now))
+LIMIT 50
+FOR UPDATE SKIP LOCKED
+```
 
-Deploying an ABP application follows the same process as deploying any .NET or ASP.NET Core application. However, there are important considerations to keep in mind. For detailed guidance, refer to ABP's [deployment documentation](https://abp.io/docs/latest/Deployment/Index).
+- Kilit **okutmaya değil kargoya** konur: aynı kargonun okutmaları aynı anda iki lane'de işlenemez.
+- `SKIP LOCKED`: başkasının tuttuğu kargoyu beklemeden atla, boşta olanı al. Lane'ler ve birden çok worker kopyası birbirini hiç beklemez.
+- Kilit transaction'la birlikte açılır; worker çökerse PostgreSQL kilidi anında bırakır. Redis lock gerekmez.
 
-### Additional resources
+### 3. Sırasız gelen mesajlar: exponential backoff
 
-You can see the following resources to learn more about your solution and the ABP Framework:
+İki worker çalışınca aynı kargonun okutmaları farklı sırayla ulaşabiliyor ("Vardı", "Çıktı"dan önce geliyor). İlk denemede 10.000 okutmanın **3.279'u** reddedildi.
 
-* [Web Application Development Tutorial](https://abp.io/docs/latest/tutorials/book-store/part-1)
-* [Application Startup Template](https://abp.io/docs/latest/startup-templates/application/index)
+- Geçersiz geçiş hemen hata sayılmaz: okutma **ertelenir** (2 → 4 → 8 → 16 sn), 5. denemede de geçersizse hatalı işaretlenir.
+- Aynı kargonun paketteki sonraki okutmaları onunla birlikte bekler (deneme hakları yanmaz).
+- Sonuç: **3.279 hata → 0**.
+
+### 4. Poison message ve dead-letter queue
+
+DB'ye hiç sığmayan bozuk bir mesaj, ABP hata durumunda her zaman `nack (requeue: true)` gönderdiği için **80 saniyede 265.000 kez** denendi. RabbitMQ 4.3'te `nack` quorum queue'nun `x-delivery-limit` sayacını da artırmıyor.
+
+- Handler hatayı **sınıflandırır**: PostgreSQL'in kalıcı veri hataları (`22xxx`, unique dışındaki `23xxx`) tekrar denenmez. Mesaj, hata sebebiyle birlikte (`x-error` header) `KargoApp.DeadLetter` exchange'ine gönderilir.
+- Geçici hatalar (DB'ye ulaşılamıyor gibi) eskisi gibi kuyruğa döner ve tekrar denenir.
+- Sonuç: 265.000 deneme → 1 deneme + DLQ'da bekleyen mesaj.
+
+### 5. Transactional outbox / inbox: servisler arası kayıpsız taşıma
+
+Kargo `Delivered` olunca müşteriye bildirim gitmeli. "DB'ye yazdım ama RabbitMQ'ya gönderemeden çöktüm" (**dual-write** problemi) olmamalı.
+
+```text
+Worker (tek transaction)                         Notifier (ayrı servis, ayrı DB)
+  okutmalar + kargo Delivered                      RabbitMQ → AbpEventInbox (MessageId unique) → ack
+  + AbpEventOutbox'a olay        ── COMMIT         InboxProcessor → handler
+OutboxSender → RabbitMQ  ─────────────────────►    hata: RetryLater (2, 4, 8… sn)
+```
+
+- `PublishAsync`, Unit of Work içindeyse olayı göndermez; commit'le birlikte outbox tablosuna yazar. Rollback olursa olay da yok olur.
+- OutboxSender ve InboxProcessor birden çok kopyada çakışmasın diye **Redis distributed lock** kullanır.
+- Notifier ayrı bir servis: sadece `Domain.Shared`'a (event sözleşmesine) bağlı, kendi kuyruğu ve kendi veritabanı var. Bildirim yavaşlarsa ya da çökerse okutma işleme etkilenmez.
+
+### 6. Shared counter: Redis `HINCRBY`
+
+Her worker kendi bellek içi sayacını tutuyordu; iki worker'ın toplamı görünmüyordu. Paket commit'ten sonra şube bazlı sayılar Redis'e `HINCRBY` ile yazılıyor. Tek komut atomik olduğu için iki worker aynı anda artırsa da sayım kaybolmuyor. Redis'e ulaşılamazsa paket bozulmuyor, sadece uyarı yazılıyor.
+
+---
+
+## Ölçümler ve deneyler
+
+### Publish paralelliği (Simulator, 10.000 okutma)
+
+| Paralellik | Saniyede | Not |
+| --- | --- | --- |
+| 1 | ~20 | Her publish ~50 ms bekliyor |
+| 10 | ~2.250 | Beklemeler üst üste biniyor: async'in asıl gücü |
+| 100 | ilk ~60 sn **0**, sonra ~3.000 | **Thread pool starvation**. `DOTNET_ThreadPool_ForceMinWorkerThreads` ile teşhis doğrulandı |
+
+### İşleme hızı (Worker, 4.000 okutma)
+
+| Lane | Paket (kargo) | Saniyede | Not |
+| --- | --- | --- | --- |
+| 1 | 1 | ~320 | Her kargo için ayrı transaction |
+| 1 | 50 | ~1.600 | Batching tek başına 5× |
+| 4 | 50 | ~4.500 | 4× değil ~2,8×: lane'ler aynı DB için yarışıyor |
+
+### Dayanıklılık deneyleri
+
+| Deney | Sonuç |
+| --- | --- |
+| Queue yokken publish | Mesajlar kayboldu (exchange bırakacak yer bulamadı) |
+| Worker kapalıyken 10.000 okutma | Queue'da bekledi, worker açılınca işlendi |
+| Worker'ı işlem ortasında öldürmek | Kayıp yok; tekrar gelen 1 mesajı idempotency yakaladı |
+| İki worker, 10.000 okutma | Backoff öncesi 3.279 hata, sonrası **0** |
+| Poison message | 265.000 deneme → 1 deneme + DLQ |
+| Notifier kapalıyken 50 teslimat | Kaybolmadı, açılınca işlendi |
+| RabbitMQ kapalıyken 50 teslimat | Outbox'ta bekledi; RabbitMQ açılınca 6 sn içinde gitti |
+| Bildirimde %20 hata | Retry ile geçti; 6 kez üst üste hata alan 1 olay **discard** edildi (bilinen eksik: ABP inbox'ında DLQ yok) |
+
+---
+
+## Çalıştırma
+
+**Gerekenler:** .NET 10 SDK, Docker
+
+1. Altyapı (PostgreSQL, RabbitMQ, Redis):
+   ```bash
+   cp .env.example .env          # şifreleri doldur
+   docker compose up -d
+   ```
+2. Şifreler commit'lenmez. Şu projelerde `appsettings.secrets.json` oluştur: `HttpApi.Host`, `DbMigrator`, `Worker`, `Simulator`, `Notifier`.
+   ```json
+   {
+     "ConnectionStrings": { "Default": "Host=localhost;Port=5432;Database=KargoApp;User ID=kargo;Password=<şifre>;" },
+     "RabbitMQ": { "Connections": { "Default": { "Password": "<şifre>" } } }
+   }
+   ```
+   Notifier'da connection string'in adı `Notifier`, veritabanı `KargoNotifier`.
+3. Veritabanı: `dotnet run --project src/KargoApp.DbMigrator`
+4. Dead-letter için RabbitMQ arayüzünden (`http://localhost:15672`) bir kez elle kur:
+   - Exchange: `KargoApp.DeadLetter` (fanout)
+   - Queue: `KargoApp.Worker.DeadLetter`, bu exchange'e bağlı
+5. Servisler (ayrı terminallerde):
+   ```bash
+   dotnet run --project src/KargoApp.Worker
+   dotnet run --project src/KargoApp.Notifier
+   dotnet run --project src/KargoApp.Simulator -- --shipments 100 --parallelism 10
+   ```
+   API ve Swagger: `dotnet run --project src/KargoApp.HttpApi.Host` → `https://localhost:44343/swagger`
+
+Worker ayarları komut satırından değiştirilebilir, örneğin `--ScanProcessing:Lanes=8 --ScanProcessing:ShipmentsPerBatch=100`.
+
+---
+
+## Bilerek kapsam dışı
+
+UI yok (Swagger yeterli) · gerçek SMS/e-posta yok (log) · multi-tenancy yok · Kubernetes / bulut deploy yok · MassTransit yok (mesajlaşmanın tek yolu ABP Distributed Event Bus).
