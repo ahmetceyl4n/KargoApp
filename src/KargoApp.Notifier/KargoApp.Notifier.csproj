@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <Import Project="..\..\common.props" />
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <RootNamespace>KargoApp.Notifier</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Serilog.AspNetCore" Version="9.0.0" />
+    <PackageReference Include="Serilog.Sinks.Async" Version="2.1.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.11" />
+    <PackageReference Include="Volo.Abp.Autofac" Version="10.7.0" />
+    <PackageReference Include="Volo.Abp.EventBus.RabbitMQ" Version="10.7.0" />
+    <PackageReference Include="Volo.Abp.EntityFrameworkCore.PostgreSql" Version="10.7.0" />
+    <PackageReference Include="Volo.Abp.DistributedLocking" Version="10.7.0" />
+    <PackageReference Include="DistributedLock.Redis" Version="1.1.1" />
+    <PackageReference Include="StackExchange.Redis" Version="2.7.33" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.11">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Sadece Eto'lar: Notifier kargonun kurallarını, entity'lerini, DB'sini bilmez -->
+    <ProjectReference Include="..\KargoApp.Domain.Shared\KargoApp.Domain.Shared.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="appsettings.json" CopyToOutputDirectory="Always" />
+    <!-- secrets dosyası commit'lenmez; temiz klonda yoksa derleme hata vermesin -->
+    <Content Include="appsettings.secrets.json" Condition="Exists('appsettings.secrets.json')" CopyToOutputDirectory="Always" />
+  </ItemGroup>
+
+</Project>
