@@ -145,7 +145,7 @@ Her worker kendi bellek içi sayacını tutuyordu; iki worker'ın toplamı gör�
 | Poison message | 265.000 deneme → 1 deneme + DLQ |
 | Notifier kapalıyken 50 teslimat | Kaybolmadı, açılınca işlendi |
 | RabbitMQ kapalıyken 50 teslimat | Outbox'ta bekledi; RabbitMQ açılınca 6 sn içinde gitti |
-| Bildirimde %20 hata | Retry ile geçti; 6 kez üst üste hata alan 1 olay **discard** edildi (bilinen eksik: ABP inbox'ında DLQ yok) |
+| Bildirimde %20 hata (`--Notifier:FailurePercent=20`) | Retry ile geçti; 6 kez üst üste hata alan 1 olay **discard** edildi (bilinen eksik: ABP inbox'ında DLQ yok) |
 
 ---
 
