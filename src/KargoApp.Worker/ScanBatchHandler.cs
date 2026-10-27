@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using Volo.Abp;
 using Volo.Abp.DependencyInjection;
 using Volo.Abp.EntityFrameworkCore;
+using Volo.Abp.EventBus.Distributed;
 using Volo.Abp.Timing;
 using Volo.Abp.Uow;
 
@@ -24,6 +25,7 @@ public class ScanBatchHandler : ITransientDependency
     private readonly ShipmentManager _shipmentManager;
     private readonly ScanStats _stats;
     private readonly SharedScanCounter _sharedCounter;
+    private readonly IDistributedEventBus _distributedEventBus;
     private readonly IClock _clock;
     private readonly ILogger<ScanBatchHandler> _logger;
     private readonly ScanProcessingOptions _options;
@@ -33,6 +35,7 @@ public class ScanBatchHandler : ITransientDependency
                             ShipmentManager shipmentManager,
                             ScanStats stats,
                             SharedScanCounter sharedCounter,
+                            IDistributedEventBus distributedEventBus,
                             IClock clock,
                             ILogger<ScanBatchHandler> logger,
                             IOptions<ScanProcessingOptions> options)
@@ -42,6 +45,7 @@ public class ScanBatchHandler : ITransientDependency
         _shipmentManager = shipmentManager;
         _stats = stats;
         _sharedCounter = sharedCounter;
+        _distributedEventBus = distributedEventBus;
         _clock = clock;
         _logger = logger;
         _options = options.Value;
@@ -94,6 +98,7 @@ public class ScanBatchHandler : ITransientDependency
         // d) Kuralı uygula; hatalı okutma paketi düşürmez
         var shipmentsByTracking = shipments.ToDictionary(s => s.TrackingNumber);
         var movements = new List<ShipmentMovement>();
+        var deliveredEvents = new List<ShipmentDeliveredEto>();
         var blocked = new Dictionary<string, DateTime>();   // bu pakette takılan kargo → ne zamana kadar beklesin
         var deferred = 0;
         var failed = 0;
@@ -121,9 +126,22 @@ public class ScanBatchHandler : ITransientDependency
                     throw new BusinessException(KargoAppDomainErrorCodes.BranchNotFound);
                 }
 
-                movements.Add(_shipmentManager.ApplyMovement(shipmentsByTracking[scan.TrackingNumber],
+                var shipment = shipmentsByTracking[scan.TrackingNumber];
+                movements.Add(_shipmentManager.ApplyMovement(shipment,
                     scan.Id, scan.BranchCode, scan.MovementType, scan.OccurredAt));
                 scan.MarkProcessed(now);
+
+                // Teslim edildiyse bildirim olayı: commit'le birlikte outbox'a yazılacak
+                if (scan.MovementType == MovementType.Delivered)
+                {
+                    deliveredEvents.Add(new ShipmentDeliveredEto
+                    {
+                        ShipmentId = shipment.Id,
+                        TrackingNumber = shipment.TrackingNumber,
+                        BranchCode = scan.BranchCode,
+                        DeliveredAt = scan.OccurredAt
+                    });
+                }
             }
             // Geçersiz geçiş ve hâlâ hakkı var → ertele: belki önceki okutma yolda (2, 4, 8, 16 sn)
             catch (BusinessException ex) when (ex.Code == KargoAppDomainErrorCodes.InvalidShipmentStatusTransition
@@ -146,6 +164,13 @@ public class ScanBatchHandler : ITransientDependency
 
         // e) Toplu kaydet ve commit → kilitler açılır
         await db.ShipmentMovements.AddRangeAsync(movements);
+
+        // Olaylar RabbitMQ'ya gitmez: UoW'a eklenir, CompleteAsync aynı transaction'da AbpEventOutbox'a yazar
+        foreach (var eto in deliveredEvents)
+        {
+            await _distributedEventBus.PublishAsync(eto);
+        }
+
         await uow.CompleteAsync();
 
         // Sadece commit başarılıysa say: paket geri alınsaydı buraya gelinmezdi

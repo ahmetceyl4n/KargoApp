@@ -7,6 +7,7 @@ using Volo.Abp.BlobStoring.Database.EntityFrameworkCore;
 using Volo.Abp.Data;
 using Volo.Abp.DependencyInjection;
 using Volo.Abp.EntityFrameworkCore;
+using Volo.Abp.EntityFrameworkCore.DistributedEvents;
 using Volo.Abp.EntityFrameworkCore.Modeling;
 using Volo.Abp.FeatureManagement.EntityFrameworkCore;
 using Volo.Abp.Identity;
@@ -21,13 +22,17 @@ namespace KargoApp.EntityFrameworkCore;
 [ConnectionStringName("Default")]
 public class KargoAppDbContext :
     AbpDbContext<KargoAppDbContext>,
-    IIdentityDbContext
+    IIdentityDbContext,
+    IHasEventOutbox
 {
     /* Add DbSet properties for your Aggregate Roots / Entities here. */
     public DbSet<Shipment> Shipments { get; set; }
     public DbSet<Branch> Branches { get; set; }
     public DbSet<ShipmentMovement> ShipmentMovements { get; set; }
     public DbSet<IncomingScan> IncomingScans { get; set; }
+
+    // ABP outbox: UoW içindeki PublishAsync mesajı önce buraya yazar, OutboxSender sonra RabbitMQ'ya taşır
+    public DbSet<OutgoingEventRecord> OutgoingEvents { get; set; }
 
     #region Entities from the modules
 
@@ -74,6 +79,7 @@ public class KargoAppDbContext :
         builder.ConfigureIdentity();
         builder.ConfigureOpenIddict();
         builder.ConfigureBlobStoring();
+        builder.ConfigureEventOutbox();   // AbpEventOutbox tablosu
 
         /* Configure your own tables/entities inside here */
 
