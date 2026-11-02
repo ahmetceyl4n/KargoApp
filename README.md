@@ -1,5 +1,7 @@
 # KargoApp
 
+[![CI](https://github.com/ahmetceyl4n/KargoApp/actions/workflows/ci.yml/badge.svg)](https://github.com/ahmetceyl4n/KargoApp/actions/workflows/ci.yml)
+
 Bir kargo takip sistemi üzerinden **ABP Framework**, **background worker**, **concurrency**, **RabbitMQ** ve **Redis** öğrenmek için yazılmış bir proje.
 
 Amaç ürün değil, her aşamada bir konuyu gerçekten kavramak. Tasarım kararları sadece yazılıp bırakılmadı, bilerek bozularak denendi: worker işlem ortasında öldürüldü, RabbitMQ kapatıldı, iki worker aynı anda çalıştırıldı, bozuk mesaj gönderildi.
